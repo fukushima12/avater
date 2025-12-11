@@ -92,11 +92,10 @@
         0.1,
         20.0
       );
-      // ★★★ 修正箇所: 左右が全て映るよう、注視点を調整し、Z座標を調整 ★★★
-      // Z座標を -1.6 に設定し、少し離れることで横幅を確保
-      // lookAt の X座標を 0.3 に設定し、人物を画面の左側に寄せる度合いを調整 (0.5->0.3)
-      camera.position.set(0.0, 1.5, -1.6); 
-      camera.lookAt(0.3, 1.4, 0); 
+      // アップ感を維持しつつ、Z座標は -1.1 を維持
+      camera.position.set(0.0, 1.4, -1.1); 
+      // ★★★ 修正箇所1: 注視点 X を 0.2 に設定し、人物を画面の左側に寄せる（右腕側を広く映す） ★★★
+      camera.lookAt(0.2, 1.3, 0); 
 
       // --- VRMローダー設定 ---
       const loader = new GLTFLoader();
@@ -144,7 +143,7 @@
           vrm.scene.rotation.y = (-Math.PI / 18) + Math.sin(time * 1.0) * 0.04;
           
           if (vrm.humanoid) {
-              // 右腕 - 横に指さすポーズに修正
+              // 右腕 - 横に指さすポーズに修正 (アニメーション付き)
               const rUA = vrm.humanoid.getRawBoneNode('rightUpperArm'); // 右上腕
               const rLA = vrm.humanoid.getRawBoneNode('rightLowerArm'); // 右下腕（前腕）
               const rH = vrm.humanoid.getRawBoneNode('rightHand');     // 右手
