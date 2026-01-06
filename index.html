@@ -3,41 +3,75 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>VRMアニメーションビューア</title>
+    <title>VRMアニメーションビューア - スロー振り返り</title>
     <style>
       body {
         margin: 0;
         padding: 0;
         display: flex;
+        flex-direction: column;
         justify-content: center;
         align-items: center;
         min-height: 100vh;
         background-color: #ffffff;
-        font-family: Arial, sans-serif;
+        font-family: "Helvetica Neue", Arial, sans-serif;
       }
       #container {
         width: 800px;
         height: 600px;
         border: 1px solid #ccc;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
         position: relative;
+        background-color: #f0f0f0;
+        border-radius: 8px;
+        overflow: hidden;
       }
       #loading {
         position: absolute;
         top: 50%;
         left: 50%;
         transform: translate(-50%, -50%);
-        font-size: 18px;
-        color: #333;
-        background-color: rgba(255, 255, 255, 0.8);
-        padding: 10px;
-        border-radius: 5px;
+        font-size: 16px;
+        color: #666;
+        background-color: rgba(255, 255, 255, 0.9);
+        padding: 15px 25px;
+        border-radius: 30px;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+      }
+      #controls {
+        margin-top: 25px;
+      }
+      button {
+        padding: 12px 30px;
+        font-size: 16px;
+        font-weight: bold;
+        cursor: pointer;
+        background-color: #4a90e2;
+        color: white;
+        border: none;
+        border-radius: 25px;
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 0 #357abd;
+      }
+      button:hover {
+        background-color: #357abd;
+        transform: translateY(2px);
+        box-shadow: 0 2px 0 #285a8d;
+      }
+      button:active {
+        transform: translateY(4px);
+        box-shadow: none;
       }
     </style>
   </head>
   <body>
-    <div id="container"></div>
-    <div id="loading">モデルを読み込み中...</div>
+    <div id="container">
+      <div id="loading">モデルを読み込み中...</div>
+    </div>
+    
+    <div id="controls">
+      <button id="toggleRotation">振り返る</button>
+    </div>
 
     <script type="importmap">
       {
@@ -54,144 +88,120 @@
       import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
       import { VRMLoaderPlugin } from "@pixiv/three-vrm";
 
-      // --- 定数定義 ---
+      // --- 定数設定 ---
       const SCREEN_WIDTH = 800;
       const SCREEN_HEIGHT = 600;
-      // モデルのパスを正しく設定してください
       const VRM_MODEL_PATH = "./models/2746523511815055395.vrm"; 
 
-      // --- DOM要素取得 ---
       const container = document.getElementById("container");
       const loading = document.getElementById("loading");
+      const button = document.getElementById("toggleRotation");
 
-      // --- レンダラー設定 ---
+      // --- 状態管理 ---
+      let lookAtMe = false; 
+      let targetRotationY = Math.PI; // 初期値：後ろ向き
+
+      // ボタンイベント
+      button.addEventListener("click", () => {
+        lookAtMe = !lookAtMe;
+        targetRotationY = lookAtMe ? 0 : Math.PI;
+        button.textContent = lookAtMe ? "後ろを向く" : "振り返る";
+      });
+
+      // --- Three.js 基本設定 ---
       const renderer = new THREE.WebGLRenderer({
         antialias: true,
         alpha: true,
-        preserveDrawingBuffer: true,
-        precision: 'highp',
       });
       renderer.setSize(SCREEN_WIDTH, SCREEN_HEIGHT);
       renderer.setPixelRatio(window.devicePixelRatio);
       renderer.outputColorSpace = THREE.SRGBColorSpace;
-      renderer.toneMapping = THREE.ACESFilmicToneMapping;
-      renderer.shadowMap.enabled = true;
-      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
       container.appendChild(renderer.domElement);
 
-      // --- シーンとライト設定 ---
       const scene = new THREE.Scene();
-      scene.background = new THREE.Color(0xf0f0f0);
+      scene.background = new THREE.Color(0xf8f8f8);
+      
       const light = new THREE.AmbientLight(0xffffff, 3.0);
       scene.add(light);
       
-      // --- カメラ設定 ---
-      const camera = new THREE.PerspectiveCamera(
-        35,
-        SCREEN_WIDTH / SCREEN_HEIGHT,
-        0.1,
-        20.0
-      );
-      // アップ感を維持しつつ、Z座標は -1.1 を維持
+      const camera = new THREE.PerspectiveCamera(35, SCREEN_WIDTH / SCREEN_HEIGHT, 0.1, 20.0);
       camera.position.set(0.0, 1.4, -1.1); 
-      // ★★★ 修正箇所1: 注視点 X を 0.2 に設定し、人物を画面の左側に寄せる（右腕側を広く映す） ★★★
       camera.lookAt(0.2, 1.3, 0); 
 
-      // --- VRMローダー設定 ---
+      // --- VRM ローダー ---
       const loader = new GLTFLoader();
       loader.register((parser) => new VRMLoaderPlugin(parser));
 
-      // --- アニメーション変数 ---
       let currentVrm = null;
       const clock = new THREE.Clock();
       let time = 0; 
 
-      // 瞬きを非同期で実行する関数
+      // 瞬きアニメーション
       const blink = async (vrm) => {
         if (!vrm.expressionManager) return;
-        
         vrm.expressionManager.setValue('blinkLeft', 1.0);
         vrm.expressionManager.setValue('blinkRight', 1.0);
         vrm.expressionManager.update();
-
-        await new Promise(resolve => setTimeout(resolve, 50)); 
-
+        await new Promise(resolve => setTimeout(resolve, 60)); 
         for (let i = 1.0; i >= 0; i -= 0.1) {
           vrm.expressionManager.setValue('blinkLeft', i);
           vrm.expressionManager.setValue('blinkRight', i);
           vrm.expressionManager.update();
-          await new Promise(resolve => setTimeout(resolve, 5)); 
+          await new Promise(resolve => setTimeout(resolve, 10)); 
         }
       };
 
       // --- アニメーションループ ---
       function animate() {
         requestAnimationFrame(animate);
-
         const deltaTime = clock.getDelta();
         time += deltaTime;
 
         if (currentVrm) {
           const vrm = currentVrm;
-
           vrm.update(deltaTime); 
           
-          // 1. 待機モーション（上下の浮遊）
+          // 【修正ポイント】回転をゆっくりにする (0.03)
+          vrm.scene.rotation.y = THREE.MathUtils.lerp(
+            vrm.scene.rotation.y,
+            targetRotationY,
+            0.03 
+          );
+
+          // 待機モーション：上下の浮遊
           vrm.scene.position.y = vrm.initialOffsetY + Math.sin(time * 1.0) * 0.01; 
           
-          // 2. 体の回転（左右の揺れ）
-          vrm.scene.rotation.y = (-Math.PI / 18) + Math.sin(time * 1.0) * 0.04;
-          
           if (vrm.humanoid) {
-              // 右腕 - 横に指さすポーズに修正 (アニメーション付き)
-              const rUA = vrm.humanoid.getRawBoneNode('rightUpperArm'); // 右上腕
-              const rLA = vrm.humanoid.getRawBoneNode('rightLowerArm'); // 右下腕（前腕）
-              const rH = vrm.humanoid.getRawBoneNode('rightHand');     // 右手
-              if (rUA && rLA && rH) {
-                  rUA.rotation.set(Math.PI * 0.5, Math.PI * 0.1 + Math.sin(time *1.0) * 0.2, 0); 
-                  rLA.rotation.set(0, 0, 0); 
-                  rH.rotation.set(0, 0, 0); 
-              }
-              // 左腕 - 斜め下45度にまっすぐ下ろすポーズ
-              const lUA = vrm.humanoid.getRawBoneNode('leftUpperArm'); // 左上腕
-              const lLA = vrm.humanoid.getRawBoneNode('leftLowerArm'); // 左下腕（前腕）
-              const lH = vrm.humanoid.getRawBoneNode('leftHand');     // 左手
-              if (lUA && lLA && lH) {
-                  lUA.rotation.set(Math.PI * 0.3, Math.PI * 0.2 + Math.sin(time * 1.0 + Math.PI) * 0.05, Math.PI * 0.4); 
-                  lLA.rotation.set(0, 0, 0); 
-              }
-
-              // 足の設定はそのまま維持
-              const rUL = vrm.humanoid.getRawBoneNode('rightUpperLeg');
-              if (rUL) {
-                rUL.rotation.y = 0.1;
-              }
-              const lUL = vrm.humanoid.getRawBoneNode('leftUpperLeg');
-              if (lUL) {
-                lUL.rotation.y = -0.1;
-              }
+            // 右腕（指差しポーズの維持）
+            const rUA = vrm.humanoid.getRawBoneNode('rightUpperArm');
+            if (rUA) {
+              rUA.rotation.set(Math.PI * 0.5, Math.PI * 0.1 + Math.sin(time * 1.0) * 0.2, 0); 
+            }
+            // 左腕
+            const lUA = vrm.humanoid.getRawBoneNode('leftUpperArm');
+            if (lUA) {
+              lUA.rotation.set(Math.PI * 0.3, Math.PI * 0.2 + Math.sin(time * 1.0 + Math.PI) * 0.05, Math.PI * 0.4); 
+            }
           }
 
-          // 3. 瞬き処理（確率で実行）
-          if (vrm.expressionManager && Math.random() < 0.0015) {
+          // 瞬き（前を向いている時のみ）
+          if (lookAtMe && vrm.expressionManager && Math.random() < 0.002) {
             blink(vrm);
           }
         }
-
         renderer.render(scene, camera);
       }
 
-      // --- VRMモデルのロード ---
+      // --- ロード実行 ---
       loader.load(
         VRM_MODEL_PATH,
         (gltf) => {
           const vrm = gltf.userData.vrm;
           currentVrm = vrm;
           scene.add(vrm.scene);
-
           loading.style.display = "none";
 
-          // モデルのサイズ調整と位置調整
+          // モデルのサイズ・位置調整
           const bbox = new THREE.Box3().setFromObject(vrm.scene);
           const modelHeight = bbox.max.y - bbox.min.y;
           const targetHeight = 1.5;
@@ -200,50 +210,22 @@
           
           const offset = -bbox.min.y * scale;
           vrm.scene.position.y = offset;
-          
-          // vrmにinitialOffsetYプロパティを直接設定
           vrm.initialOffsetY = offset; 
 
-          // ポーズの設定
-          if (vrm.humanoid) {
-            const setPose = (upperArm, lowerArm, rotationZ, rotationX, lowerArmRotX) => {
-                if (upperArm && lowerArm) {
-                    upperArm.rotation.set(rotationX, 0, rotationZ);
-                    lowerArm.rotation.set(lowerArmRotX, 0, 0);
-                }
-            };
-            
-            // 右腕
-            const rUA = vrm.humanoid.getRawBoneNode('rightUpperArm');
-            const rLA = vrm.humanoid.getRawBoneNode('rightLowerArm');
-            setPose(rUA, rLA, -0.2, 0.1, -0.785);
-
-            // 左腕
-            const lUA = vrm.humanoid.getRawBoneNode('leftUpperArm');
-            const lLA = vrm.humanoid.getRawBoneNode('leftLowerArm');
-            setPose(lUA, lLA, 1.2, 0.1, 0.5);
-
-            // 足の設定はそのまま維持
-            const rUL = vrm.humanoid.getRawBoneNode('rightUpperLeg');
-            if (rUL) {
-              rUL.rotation.y = 0.1;
-            }
-            const lUL = vrm.humanoid.getRawBoneNode('leftUpperLeg');
-            if (lUL) {
-              lUL.rotation.y = -0.1;
-            }
-          }
+          // 初期状態を後ろ向きにする
+          vrm.scene.rotation.y = targetRotationY;
 
           animate();
         },
         (progress) => {
-          const percent = Math.round((progress.loaded / progress.total) * 100);
-          loading.textContent = `モデルを読み込み中... ${percent}%`;
+          if (progress.total > 0) {
+            const percent = Math.round((progress.loaded / progress.total) * 100);
+            loading.textContent = `モデルを読み込み中... ${percent}%`;
+          }
         },
         (error) => {
           console.error("VRMロードエラー:", error);
-          loading.textContent = "モデルの読み込みに失敗しました";
-          loading.style.color = "red";
+          loading.textContent = "読み込み失敗。パスを確認してください。";
         }
       );
     </script>
